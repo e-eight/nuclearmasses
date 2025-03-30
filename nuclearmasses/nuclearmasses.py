@@ -1,5 +1,3 @@
-"""Functionality to parse all data file into a single object."""
-
 import importlib.resources
 import logging
 import pathlib
@@ -44,17 +42,9 @@ def ame_data(year: int) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if year not in AME_YEARS:
         raise ValueError(f"You must choose a year from {AME_YEARS}")
 
-    data_dir = importlib.resources.files("nuclearmasses.data") / str(year)
+    data_dir = resources.files("nuclearmasses.data") / str(year)
 
     match year:
-        case 1993:
-            mass_file = data_dir / "mass_rmd.mas93"
-            rct1_file = data_dir / "rct1_rmd.mas93"
-            rct2_file = data_dir / "rct2_rmd.mas93"
-        case 1995:
-            mass_file = data_dir / "mass_rmd.mas95"
-            rct1_file = data_dir / "rct1_rmd.mas95"
-            rct2_file = data_dir / "rct2_rmd.mas95"
         case 2003:
             mass_file = data_dir / "mass.mas03"
             rct1_file = data_dir / "rct1.mas03"
@@ -64,7 +54,7 @@ def ame_data(year: int) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
             rct1_file = data_dir / "rct1.mas12"
             rct2_file = data_dir / "rct2.mas12"
         case 2016:
-            mass_file = data_dir / "mass16.txt"
+            mass_file = data_dir / "mas16.txt"
             rct1_file = data_dir / "rct1-16.txt"
             rct2_file = data_dir / "rct2-16.txt"
         case 2020:
@@ -108,7 +98,7 @@ def nubase_data(year: int) -> pd.DataFrame:
     if year not in NUBASE_YEARS:
         raise ValueError(f"You must choose a year from {NUBASE_YEARS}")
 
-    data_dir = importlib.resources.files("nuclearmasses.data") / str(year)
+    data_dir = resources.files("nuclearmasses.data") / str(year)
 
     match year:
         case 2003:
@@ -120,61 +110,5 @@ def nubase_data(year: int) -> pd.DataFrame:
         case 2020:
             nubase_file = data_dir / "nubase_1.mas20"
 
-    nubase_df = NUBASEParser(year).read_file(nubase_file)
+    nubase_df = NubaseParser(year).read_file(nubase_file)
     return nubase_df
-
-
-class MassTable:
-    """Storage class for all of the mass data.
-
-    Internally there are separate dataframes for the NUBASE and AME data as well as a
-    combined one for all data
-    """
-
-    def __init__(self):
-        """Do all of the work at construction."""
-        self.data_path = importlib.resources.files("nuclearmasses.data")
-        self.nubase = pd.concat(
-            [nubase_data(y) for y in NUBASE_YEARS], ignore_index=True
-        )
-        self.ame = pd.concat(
-            [self._combine_ame_data(y) for y in AME_YEARS], ignore_index=True
-        )
-        self.full_data = self._combine_all_data()
-        self._do_indexing()
-
-    def _combine_ame_data(self, year: int) -> pd.DataFrame:
-        """Combine all the AME files from the given year into a Pandas DataFrame."""
-        mass_df, rct1_df, rct2_df = ame_data(year)
-
-        # Merge all 3 of the AME files/data frames into one
-        common_columns = ["A", "Z", "N", "TableYear", "Symbol"]
-        merged_df = mass_df.merge(rct1_df, on=common_columns, how="outer").merge(
-            rct2_df, on=common_columns, how="outer"
-        )
-        return merged_df
-
-    def _combine_all_data(self) -> pd.DataFrame:
-        """Combine all NUBASE and AME data into a Pandas DataFrame."""
-        common_columns = ["A", "Z", "N", "TableYear", "Symbol"]
-        df = self.nubase.merge(self.ame, on=common_columns, how="outer")
-
-        df["NUBASERelativeError"] = abs(
-            df["NUBASEMassExcessError"] / df["NUBASEMassExcess"]
-        )
-        df["AMERelativeError"] = abs(df["AMEMassExcessError"] / df["AMEMassExcess"])
-
-        # 12C has a 0.0 +/ 0.0 mass excess by definition so calculating relative error -> NaN
-        # Set the value to 0.0 as that's what it is
-        df.loc[(df.Symbol == "C") & (df.A == 12), "NUBASERelativeError"] = 0.0
-        df.loc[(df.Symbol == "C") & (df.A == 12), "AMERelativeError"] = 0.0
-        return df
-
-    def _do_indexing(self) -> None:
-        """
-        Set the index of the DataFrames to the table year. This is done in place so
-        nothing is returned.
-        """
-        self.nubase.set_index("TableYear", inplace=True)
-        self.ame.set_index("TableYear", inplace=True)
-        self.full_data.set_index("TableYear", inplace=True)
